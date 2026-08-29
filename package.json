@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "description": "Portal noi bo: CMS admin + UI nguoi dung, chay tren Windows Server khong can IIS",
   "scripts": {
     "start": "node server/server.js",
@@ -12,7 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.0.0"
