@@ -1,0 +1,8 @@
+node_modules/
+client/dist/
+data/
+content/
+logs/
+.env
+deploy/nssm.exe
+*.log
