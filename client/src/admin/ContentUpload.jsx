@@ -16,11 +16,11 @@ export default function ContentUpload({ node, onUpload, busy }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
+        <label className="text-[13px] font-medium text-fg-2">
           Nội dung trang
         </label>
         {node.hasContent && (
-          <span className="inline-flex items-center gap-1 text-[12px] text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1 text-[12px] text-ok">
             <FileCheck2 size={13} />
             Đã có file
           </span>
@@ -41,21 +41,21 @@ export default function ContentUpload({ node, onUpload, busy }) {
           setDragging(false)
           handleFiles(e.dataTransfer.files)
         }}
-        className={`flex w-full flex-col items-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-7 text-center transition ${
+        className={`flex w-full flex-col items-center gap-1.5 rounded-md border border-dashed px-4 py-7 text-center transition ${
           dragging
-            ? 'border-blue-400 bg-blue-500/5'
-            : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/50'
+            ? 'border-accent-line bg-accent-wash/60'
+            : 'border-line hover:border-fg-3 hover:bg-hover/40'
         } ${busy ? 'cursor-wait opacity-60' : 'cursor-pointer'}`}
       >
         {busy ? (
-          <Loader2 size={20} className="animate-spin text-zinc-400" />
+          <Loader2 size={20} className="animate-spin text-fg-3" />
         ) : (
-          <UploadCloud size={20} className="text-zinc-400" />
+          <UploadCloud size={20} className="text-fg-3" />
         )}
-        <span className="text-[13px] text-zinc-600 dark:text-zinc-300">
+        <span className="text-[13px] text-fg-2">
           {node.hasContent ? 'Tải file khác lên để thay thế' : 'Kéo file .html vào đây'}
         </span>
-        <span className="text-[12px] text-zinc-400">Chỉ nhận .html hoặc .htm, tối đa 5MB</span>
+        <span className="text-[12px] text-fg-3">Chỉ nhận .html hoặc .htm, tối đa 5MB</span>
       </button>
 
       <input

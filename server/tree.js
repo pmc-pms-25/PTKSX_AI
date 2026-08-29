@@ -47,12 +47,15 @@ function toClient(row) {
   return {
     id: row.id,
     parentId: row.parent_id,
+    groupId: row.group_id ?? null,
     type: row.type,
     title: row.title,
     slug: row.slug,
     icon: row.icon,
     hasContent: Boolean(row.content_file),
+    displayMode: row.display_mode || 'document',
     isActive: Boolean(row.is_active),
+    updatedAt: row.updated_at,
     sortOrder: row.sort_order,
     children: [],
   }
@@ -153,4 +156,32 @@ export function validateOrder(entries, existingIds) {
   }
 
   return { ok: true }
+}
+
+/**
+ * Chia cac node goc ve dung nhom cua chung.
+ * Tra ve [{ id, title, sortOrder, tree }] theo dung thu tu nhom.
+ *
+ * Node goc lac loai (du lieu hong, khong tro toi nhom nao) duoc gom vao nhom dau tien
+ * -- de no bien mat khoi cot muc luc thi admin khong con duong nao sua.
+ */
+export function buildGroups(groupRows, nodeRows, { activeOnly = false } = {}) {
+  const roots = buildTree(nodeRows, { activeOnly })
+  const groups = [...groupRows].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  if (groups.length === 0) return []
+
+  const buckets = new Map(groups.map((g) => [g.id, []]))
+  const fallback = groups[0].id
+
+  for (const node of roots) {
+    const bucket = buckets.get(node.groupId) ?? buckets.get(fallback)
+    bucket.push(node)
+  }
+
+  return groups.map((g) => ({
+    id: g.id,
+    title: g.title,
+    sortOrder: g.sort_order,
+    tree: buckets.get(g.id),
+  }))
 }

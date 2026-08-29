@@ -101,13 +101,21 @@ export function applyMove(items, activeId, overId, projection) {
 /**
  * Doi danh sach phang thanh payload cho PUT /api/admin/tree/order.
  * sortOrder duoc danh lai tu 0 trong pham vi tung thu muc cha.
+ *
+ * groupId chi gan cho node goc. Node nam trong thu muc suy nhom tu goc cua nhanh
+ * minh, va may chu se xoa group_id cua no ve NULL.
  */
-export function toOrderPayload(items) {
+export function toOrderPayload(items, groupId) {
   const counters = new Map()
   return items.map((item) => {
     const key = item.parentId ?? '__root__'
     const next = counters.get(key) ?? 0
     counters.set(key, next + 1)
-    return { id: item.id, parentId: item.parentId, sortOrder: next }
+    return {
+      id: item.id,
+      parentId: item.parentId,
+      sortOrder: next,
+      ...(item.parentId == null ? { groupId } : {}),
+    }
   })
 }

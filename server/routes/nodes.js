@@ -2,10 +2,11 @@ import { Router } from 'express'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import multer from 'multer'
-import { allNodes, getNode } from '../db.js'
+import { allNodes, getNode, getGroup, firstGroupId } from '../db.js'
 import { slugify, uniqueSlug, takenSlugs, descendantIds, buildTree } from '../tree.js'
+import { groupsView } from '../views.js'
 import { requireAdmin } from '../middleware/admin.js'
-import { loadContentHtml } from './content.js'
+import { loadContentHtml, looksLikeApp } from './content.js'
 import { CONTENT_DIR, resolveContentFile } from '../paths.js'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -28,8 +29,19 @@ function nodeResponse(db, id) {
   const rows = allNodes(db)
   return {
     node: buildTree(rows.filter((r) => r.id === id))[0] ?? null,
-    tree: buildTree(rows, { activeOnly: false }),
+    groups: groupsView(db, false),
   }
+}
+
+/** Vi tri cuoi cung trong danh sach anh em, de muc moi rot xuong duoi cung. */
+function nextSortOrder(db, parentId, groupId) {
+  return (
+    db
+      .prepare(
+        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM nodes WHERE parent_id IS ? AND group_id IS ?',
+      )
+      .get(parentId, groupId).n ?? 0
+  )
 }
 
 function removeContentFile(fileName) {
@@ -49,6 +61,8 @@ export function nodeRoutes(db) {
   router.post('/api/admin/nodes', requireAdmin, (req, res) => {
     const { type, title, icon } = req.body ?? {}
     const parentId = req.body?.parentId ?? null
+    // Chi node goc mang nhom; node nam trong thu muc suy nhom tu goc cua nhanh minh.
+    let groupId = null
 
     if (type !== 'folder' && type !== 'item') {
       return res.status(400).json({ error: "Loai muc phai la 'folder' hoac 'item'." })
@@ -62,23 +76,23 @@ export function nodeRoutes(db) {
       if (parent.type !== 'folder') {
         return res.status(400).json({ error: 'Chi thu muc moi chua duoc muc con.' })
       }
+    } else {
+      groupId = req.body?.groupId ?? firstGroupId(db)
+      if (!getGroup(db, groupId)) {
+        return res.status(400).json({ error: 'Nhom khong ton tai.' })
+      }
     }
 
     const slug = uniqueSlug(slugify(title), takenSlugs(db))
-    const nextOrder =
-      db
-        .prepare(
-          'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM nodes WHERE parent_id IS ?',
-        )
-        .get(parentId).n ?? 0
+    const nextOrder = nextSortOrder(db, parentId, groupId)
     const now = new Date().toISOString()
 
     const info = db
       .prepare(
-        `INSERT INTO nodes (parent_id, type, title, slug, icon, sort_order, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO nodes (parent_id, group_id, type, title, slug, icon, sort_order, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       )
-      .run(parentId, type, title.trim(), slug, icon ?? null, nextOrder, now, now)
+      .run(parentId, groupId, type, title.trim(), slug, icon ?? null, nextOrder, now, now)
 
     res.status(201).json(nodeResponse(db, info.lastInsertRowid))
   })
@@ -97,7 +111,29 @@ export function nodeRoutes(db) {
       patch.title = title.trim()
     }
     if ('icon' in (req.body ?? {})) patch.icon = req.body.icon || null
+
+    if ('displayMode' in (req.body ?? {})) {
+      const mode = req.body.displayMode
+      if (mode !== 'document' && mode !== 'app') {
+        return res.status(400).json({ error: "Kieu hien thi phai la 'document' hoac 'app'." })
+      }
+      patch.display_mode = mode
+    }
     if ('isActive' in (req.body ?? {})) patch.is_active = req.body.isActive ? 1 : 0
+
+    // Chuyen sang nhom khac se dua ca nhanh ra ngoai cung cua nhom do -- mot muc
+    // khong the vua nam trong thu muc cu vua thuoc nhom moi.
+    if ('groupId' in (req.body ?? {})) {
+      const groupId = Number(req.body.groupId)
+      if (!getGroup(db, groupId)) {
+        return res.status(400).json({ error: 'Nhom khong ton tai.' })
+      }
+      if (groupId !== node.group_id || node.parent_id != null) {
+        patch.group_id = groupId
+        patch.parent_id = null
+        patch.sort_order = nextSortOrder(db, null, groupId)
+      }
+    }
 
     // Slug khong tu doi theo title: doi slug la gay hong moi duong dan da chia se.
     // Muon doi thi admin phai sua co y, va van duoc kiem tra trung.
@@ -142,10 +178,7 @@ export function nodeRoutes(db) {
     // ON DELETE CASCADE lo phan con, mien la PRAGMA foreign_keys dang bat.
     db.prepare('DELETE FROM nodes WHERE id = ?').run(id)
 
-    res.json({
-      deleted: doomed.length,
-      tree: buildTree(allNodes(db), { activeOnly: false }),
-    })
+    res.json({ deleted: doomed.length, groups: groupsView(db, false) })
   })
 
   /**
@@ -182,11 +215,17 @@ export function nodeRoutes(db) {
       fs.mkdirSync(CONTENT_DIR, { recursive: true })
       fs.writeFileSync(resolveContentFile(fileName), req.file.buffer)
 
-      db.prepare('UPDATE nodes SET content_file = ?, updated_at = ? WHERE id = ?').run(
-        fileName,
-        new Date().toISOString(),
-        id,
-      )
+      // Doan kieu hien thi ngay tu file, chi o lan tai len DAU TIEN cua muc nay.
+      // Admin da tu chon roi thi ton trong lua chon do, khong ghi de moi lan tai lai.
+      const mode = node.content_file
+        ? node.display_mode || 'document'
+        : looksLikeApp(req.file.buffer.toString('utf8'))
+          ? 'app'
+          : 'document'
+
+      db.prepare(
+        'UPDATE nodes SET content_file = ?, display_mode = ?, updated_at = ? WHERE id = ?',
+      ).run(fileName, mode, new Date().toISOString(), id)
 
       // Chi xoa file cu sau khi file moi da ghi thanh cong.
       if (node.content_file) removeContentFile(node.content_file)

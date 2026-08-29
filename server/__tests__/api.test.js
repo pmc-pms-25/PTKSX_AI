@@ -4,7 +4,9 @@ import fs from 'node:fs'
 import { openDb } from '../db.js'
 import { createApp } from '../app.js'
 import { slugify, uniqueSlug, validateOrder, buildTree, descendantIds } from '../tree.js'
-import { CONTENT_DIR, resolveContentFile } from '../paths.js'
+import { CONTENT_DIR, BRANDING_DIR, resolveContentFile, resolveBrandingFile } from '../paths.js'
+import { hashPassword, verifyPassword } from '../auth.js'
+import { looksLikeApp, injectIntoHtml } from '../routes/content.js'
 
 // Test chay tren DB in-memory nen khong cham vao data/portal.db that.
 let db
@@ -15,6 +17,7 @@ beforeEach(() => {
   db = openDb(':memory:')
   app = createApp(db, { serveClient: false })
   fs.mkdirSync(CONTENT_DIR, { recursive: true })
+  fs.mkdirSync(BRANDING_DIR, { recursive: true })
 })
 
 const created = []
@@ -27,6 +30,11 @@ afterAll(() => {
     }
   }
 })
+
+/** Cay cua nhom dau tien -- phan lon test chi dung mot nhom. */
+function firstTree(body) {
+  return body.groups[0].tree
+}
 
 async function addFolder(title, parentId = null) {
   const res = await request(app)
@@ -103,7 +111,7 @@ describe('GET /api/tree', () => {
     await addItem('Con A', folder.id)
 
     let res = await request(app).get('/api/tree').expect(200)
-    expect(res.body.tree[0].children).toHaveLength(1)
+    expect(firstTree(res.body)[0].children).toHaveLength(1)
 
     await request(app)
       .patch(`/api/admin/nodes/${folder.id}`)
@@ -111,12 +119,12 @@ describe('GET /api/tree', () => {
       .expect(200)
 
     res = await request(app).get('/api/tree').expect(200)
-    expect(res.body.tree).toHaveLength(0)
+    expect(firstTree(res.body)).toHaveLength(0)
 
     // Admin van thay day du.
     const admin = await request(app).get('/api/admin/tree').expect(200)
-    expect(admin.body.tree).toHaveLength(1)
-    expect(admin.body.tree[0].isActive).toBe(false)
+    expect(firstTree(admin.body)).toHaveLength(1)
+    expect(firstTree(admin.body)[0].isActive).toBe(false)
   })
 })
 
@@ -138,8 +146,8 @@ describe('PUT /api/admin/tree/order', () => {
       .expect(200)
 
     const res = await request(app).get('/api/admin/tree').expect(200)
-    expect(res.body.tree).toHaveLength(1)
-    expect(res.body.tree[0].children.map((c) => c.title)).toEqual(['B', 'A'])
+    expect(firstTree(res.body)).toHaveLength(1)
+    expect(firstTree(res.body)[0].children.map((c) => c.title)).toEqual(['B', 'A'])
   })
 
   it('tu choi keo thu muc vao ben trong chinh no, khong ghi gi ca', async () => {
@@ -158,8 +166,8 @@ describe('PUT /api/admin/tree/order', () => {
 
     // Cay phai con nguyen ven.
     const res = await request(app).get('/api/admin/tree').expect(200)
-    expect(res.body.tree).toHaveLength(1)
-    expect(res.body.tree[0].id).toBe(parent.id)
+    expect(firstTree(res.body)).toHaveLength(1)
+    expect(firstTree(res.body)[0].id).toBe(parent.id)
   })
 
   it('tu choi khi mot id khong ton tai, khong ghi phan hop le di kem', async () => {
@@ -394,5 +402,536 @@ describe('cac ham thuan tuy', () => {
       ids,
     )
     expect(res.ok).toBe(false)
+  })
+})
+
+// 1x1 pixel PNG -- du de multer nhan la anh that.
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+function brandingPath(logoUrl) {
+  return resolveBrandingFile(decodeURIComponent(logoUrl.replace('/branding/', '')))
+}
+
+describe('cai dat portal', () => {
+  it('tra ve gia tri mac dinh khi admin chua doi gi', async () => {
+    const res = await request(app).get('/api/settings').expect(200)
+    expect(res.body.siteTitle).toBe('PKTSX')
+    expect(res.body.logoUrl).toBe(null)
+  })
+
+  it('luu ten va dong phu moi', async () => {
+    await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: '  Phong Ky thuat  ', siteSubtitle: 'So tay van hanh' })
+      .expect(200)
+
+    const res = await request(app).get('/api/settings').expect(200)
+    // Khoang trang thua o hai dau phai bi cat di truoc khi luu.
+    expect(res.body.siteTitle).toBe('Phong Ky thuat')
+    expect(res.body.siteSubtitle).toBe('So tay van hanh')
+  })
+
+  it('mac dinh tat muc "Mo gan day"', async () => {
+    const res = await request(app).get('/api/settings').expect(200)
+    expect(res.body.showRecent).toBe(false)
+  })
+
+  it('bat va tat lai muc "Mo gan day"', async () => {
+    let res = await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: 'PKTSX', showRecent: true })
+      .expect(200)
+    expect(res.body.showRecent).toBe(true)
+
+    res = await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: 'PKTSX', showRecent: false })
+      .expect(200)
+    expect(res.body.showRecent).toBe(false)
+  })
+
+  it('khong gui showRecent thi giu nguyen gia tri cu', async () => {
+    await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: 'PKTSX', showRecent: true })
+      .expect(200)
+
+    // Luu ten portal khong duoc lam mat lua chon hien/an.
+    const res = await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: 'Ten khac' })
+      .expect(200)
+    expect(res.body.showRecent).toBe(true)
+  })
+
+  it('tu choi ten portal de trong', async () => {
+    const res = await request(app)
+      .put('/api/admin/settings')
+      .send({ siteTitle: '   ' })
+      .expect(400)
+    expect(res.body.error).toMatch(/khong duoc de trong/i)
+  })
+
+  it('tai logo len roi phuc vu duoc qua /branding', async () => {
+    const upload = await request(app)
+      .post('/api/admin/settings/logo')
+      .attach('logo', TINY_PNG, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(200)
+
+    expect(upload.body.logoUrl).toMatch(/^\/branding\/.+\.png$/)
+    created.push(brandingPath(upload.body.logoUrl))
+
+    const served = await request(app).get(upload.body.logoUrl).expect(200)
+    expect(served.headers['content-type']).toMatch(/image\/png/)
+    expect(Buffer.from(served.body).equals(TINY_PNG)).toBe(true)
+  })
+
+  it('tai logo moi thi xoa han file logo cu', async () => {
+    const first = await request(app)
+      .post('/api/admin/settings/logo')
+      .attach('logo', TINY_PNG, { filename: 'a.png', contentType: 'image/png' })
+      .expect(200)
+    const firstPath = brandingPath(first.body.logoUrl)
+
+    const second = await request(app)
+      .post('/api/admin/settings/logo')
+      .attach('logo', TINY_PNG, { filename: 'b.png', contentType: 'image/png' })
+      .expect(200)
+    created.push(brandingPath(second.body.logoUrl))
+
+    expect(second.body.logoUrl).not.toBe(first.body.logoUrl)
+    expect(fs.existsSync(firstPath)).toBe(false)
+  })
+
+  it('bo logo thi xoa ca file lan tham chieu', async () => {
+    const upload = await request(app)
+      .post('/api/admin/settings/logo')
+      .attach('logo', TINY_PNG, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(200)
+    const filePath = brandingPath(upload.body.logoUrl)
+
+    await request(app).delete('/api/admin/settings/logo').expect(200)
+
+    expect(fs.existsSync(filePath)).toBe(false)
+    const res = await request(app).get('/api/settings').expect(200)
+    expect(res.body.logoUrl).toBe(null)
+  })
+
+  it('tu choi file khong phai anh', async () => {
+    const res = await request(app)
+      .post('/api/admin/settings/logo')
+      .attach('logo', Buffer.from('<html></html>'), {
+        filename: 'x.html',
+        contentType: 'text/html',
+      })
+      .expect(400)
+    expect(res.body.error).toMatch(/anh/i)
+  })
+
+  it('chan path traversal tren duong dan logo', async () => {
+    expect(resolveBrandingFile('../data/portal.db')).toBe(null)
+    expect(resolveBrandingFile('..\\data\\portal.db')).toBe(null)
+    await request(app).get('/branding/..%2F..%2Fpackage.json').expect(404)
+  })
+
+  it('cai dat portal cung nam sau cong dang nhap', async () => {
+    process.env.ADMIN_PASSWORD = 'bi-mat'
+    const guarded = createApp(openDb(':memory:'), { serveClient: false })
+
+    await request(guarded).put('/api/admin/settings').send({ siteTitle: 'X' }).expect(401)
+    // Phia nguoi dung thi van doc duoc, chi khong sua duoc.
+    await request(guarded).get('/api/settings').expect(200)
+  })
+})
+
+describe('nhom muc luc', () => {
+  async function groupList() {
+    const res = await request(app).get('/api/admin/tree').expect(200)
+    return res.body.groups
+  }
+
+  it('DB moi co san hai nhom mac dinh', async () => {
+    const groups = await groupList()
+    expect(groups.map((g) => g.title)).toEqual(['Tài liệu', 'Biểu mẫu'])
+  })
+
+  it('muc goc tao ra roi vao nhom dau tien khi khong noi ro', async () => {
+    await addFolder('Quy trình')
+    const groups = await groupList()
+    expect(groups[0].tree.map((n) => n.title)).toEqual(['Quy trình'])
+    expect(groups[1].tree).toHaveLength(0)
+  })
+
+  it('tao muc thang vao mot nhom cu the', async () => {
+    const groups = await groupList()
+    const target = groups[1].id
+
+    await request(app)
+      .post('/api/admin/nodes')
+      .send({ type: 'folder', title: 'Biên bản', groupId: target })
+      .expect(201)
+
+    const after = await groupList()
+    expect(after[0].tree).toHaveLength(0)
+    expect(after[1].tree.map((n) => n.title)).toEqual(['Biên bản'])
+  })
+
+  it('tu choi tao muc vao nhom khong ton tai', async () => {
+    const res = await request(app)
+      .post('/api/admin/nodes')
+      .send({ type: 'item', title: 'X', groupId: 9999 })
+      .expect(400)
+    expect(res.body.error).toMatch(/nhom khong ton tai/i)
+  })
+
+  it('doi ten nhom', async () => {
+    const groups = await groupList()
+    await request(app)
+      .patch(`/api/admin/groups/${groups[0].id}`)
+      .send({ title: '  Sổ tay vận hành  ' })
+      .expect(200)
+
+    const after = await groupList()
+    expect(after[0].title).toBe('Sổ tay vận hành')
+  })
+
+  it('tu choi ten nhom de trong', async () => {
+    const groups = await groupList()
+    await request(app)
+      .patch(`/api/admin/groups/${groups[0].id}`)
+      .send({ title: '   ' })
+      .expect(400)
+  })
+
+  it('them nhom moi xep xuong cuoi', async () => {
+    await request(app).post('/api/admin/groups').send({ title: 'Tra cứu' }).expect(201)
+    const groups = await groupList()
+    expect(groups.map((g) => g.title)).toEqual(['Tài liệu', 'Biểu mẫu', 'Tra cứu'])
+  })
+
+  it('doi thu tu cac nhom', async () => {
+    const groups = await groupList()
+    await request(app)
+      .put('/api/admin/groups/order')
+      .send({ order: [groups[1].id, groups[0].id] })
+      .expect(200)
+
+    const after = await groupList()
+    expect(after.map((g) => g.title)).toEqual(['Biểu mẫu', 'Tài liệu'])
+  })
+
+  it('tu choi thu tu thieu nhom', async () => {
+    const groups = await groupList()
+    await request(app)
+      .put('/api/admin/groups/order')
+      .send({ order: [groups[0].id] })
+      .expect(400)
+  })
+
+  it('chuyen mot muc sang nhom khac se dua no ra ngoai cung', async () => {
+    const folder = await addFolder('Quy trình')
+    const child = await addItem('Con', folder.id)
+    const groups = await groupList()
+
+    await request(app)
+      .patch(`/api/admin/nodes/${child.id}`)
+      .send({ groupId: groups[1].id })
+      .expect(200)
+
+    const after = await groupList()
+    expect(after[0].tree[0].children).toHaveLength(0)
+    expect(after[1].tree.map((n) => n.title)).toEqual(['Con'])
+  })
+
+  it('keo mot muc goc sang nhom khac qua duong sap xep', async () => {
+    const a = await addItem('A')
+    const groups = await groupList()
+
+    await request(app)
+      .put('/api/admin/tree/order')
+      .send({ order: [{ id: a.id, parentId: null, groupId: groups[1].id, sortOrder: 0 }] })
+      .expect(200)
+
+    const after = await groupList()
+    expect(after[0].tree).toHaveLength(0)
+    expect(after[1].tree.map((n) => n.title)).toEqual(['A'])
+  })
+
+  it('keo muc goc vao trong thu muc thi xoa nhom cua no', async () => {
+    const folder = await addFolder('Thư mục')
+    const a = await addItem('A')
+
+    await request(app)
+      .put('/api/admin/tree/order')
+      .send({
+        order: [
+          { id: folder.id, parentId: null, sortOrder: 0 },
+          { id: a.id, parentId: folder.id, sortOrder: 0 },
+        ],
+      })
+      .expect(200)
+
+    // Node con khong duoc giu group_id, neu khong no se hien o ca hai noi.
+    const row = db.prepare('SELECT group_id FROM nodes WHERE id = ?').get(a.id)
+    expect(row.group_id).toBe(null)
+  })
+
+  it('tu choi keo muc goc vao nhom khong ton tai', async () => {
+    const a = await addItem('A')
+    await request(app)
+      .put('/api/admin/tree/order')
+      .send({ order: [{ id: a.id, parentId: null, groupId: 9999, sortOrder: 0 }] })
+      .expect(400)
+  })
+
+  it('xoa nhom la xoa ca cay ben trong lan file noi dung', async () => {
+    const item = await addItem('Có file')
+    await request(app)
+      .post(`/api/admin/nodes/${item.id}/content`)
+      .attach('file', Buffer.from('<h1>x</h1>'), 'a.html')
+      .expect(200)
+
+    const stored = db.prepare('SELECT content_file FROM nodes WHERE id = ?').get(item.id)
+    const filePath = resolveContentFile(stored.content_file)
+    expect(fs.existsSync(filePath)).toBe(true)
+
+    const groups = await groupList()
+    const res = await request(app).delete(`/api/admin/groups/${groups[0].id}`).expect(200)
+
+    expect(res.body.deleted).toBe(1)
+    expect(fs.existsSync(filePath)).toBe(false)
+    expect(res.body.groups.map((g) => g.title)).toEqual(['Biểu mẫu'])
+  })
+
+  it('khong cho xoa nhom cuoi cung', async () => {
+    const groups = await groupList()
+    await request(app).delete(`/api/admin/groups/${groups[1].id}`).expect(200)
+
+    const left = await groupList()
+    expect(left).toHaveLength(1)
+
+    const res = await request(app).delete(`/api/admin/groups/${left[0].id}`).expect(400)
+    expect(res.body.error).toMatch(/it nhat mot nhom/i)
+  })
+
+  it('nhom nam sau cong dang nhap', async () => {
+    process.env.ADMIN_PASSWORD = 'bi-mat'
+    const guarded = createApp(openDb(':memory:'), { serveClient: false })
+
+    await request(guarded).post('/api/admin/groups').send({ title: 'X' }).expect(401)
+    // Phia nguoi dung van doc duoc cay, chi khong sua duoc nhom.
+    await request(guarded).get('/api/tree').expect(200)
+  })
+})
+
+describe('mat khau quan tri', () => {
+  const PW = 'mat-khau-manh'
+
+  async function lock(password = PW) {
+    return request(app).put('/api/admin/password').send({ newPassword: password }).expect(200)
+  }
+
+  it('portal moi la dang mo', async () => {
+    const res = await request(app).get('/api/admin/status').expect(200)
+    expect(res.body.authRequired).toBe(false)
+    await request(app).get('/api/admin/tree').expect(200)
+  })
+
+  it('dat mat khau xong la khoa ngay', async () => {
+    const res = await lock()
+    expect(res.body.authRequired).toBe(true)
+
+    await request(app).get('/api/admin/tree').expect(401)
+    await request(app).get('/api/admin/tree').set('x-admin-password', PW).expect(200)
+
+    // Phia nguoi dung khong bi anh huong.
+    await request(app).get('/api/tree').expect(200)
+    const status = await request(app).get('/api/admin/status').expect(200)
+    expect(status.body.authRequired).toBe(true)
+  })
+
+  it('mat khau khong bao gio ro trong DB hay trong phan hoi', async () => {
+    await lock()
+
+    const stored = db.prepare("SELECT value FROM settings WHERE key = 'adminPasswordHash'").get()
+    expect(stored.value).toMatch(/^scrypt\$/)
+    expect(stored.value).not.toContain(PW)
+
+    const settings = await request(app).get('/api/settings').expect(200)
+    expect(JSON.stringify(settings.body)).not.toContain(PW)
+    expect(settings.body.adminPasswordHash).toBeUndefined()
+  })
+
+  it('tu choi mat khau qua ngan', async () => {
+    const res = await request(app)
+      .put('/api/admin/password')
+      .send({ newPassword: 'abc' })
+      .expect(400)
+    expect(res.body.error).toMatch(/it nhat/i)
+  })
+
+  it('doi mat khau phai nhap dung mat khau cu', async () => {
+    await lock()
+
+    const wrong = await request(app)
+      .put('/api/admin/password')
+      .set('x-admin-password', PW)
+      .send({ currentPassword: 'sai-roi', newPassword: 'mat-khau-moi' })
+      .expect(400)
+    expect(wrong.body.error).toMatch(/hien tai khong dung/i)
+
+    await request(app)
+      .put('/api/admin/password')
+      .set('x-admin-password', PW)
+      .send({ currentPassword: PW, newPassword: 'mat-khau-moi' })
+      .expect(200)
+
+    // Mat khau cu phai het hieu luc ngay.
+    await request(app).get('/api/admin/tree').set('x-admin-password', PW).expect(401)
+    await request(app).get('/api/admin/tree').set('x-admin-password', 'mat-khau-moi').expect(200)
+  })
+
+  it('bo mat khau tra portal ve trang thai mo', async () => {
+    await lock()
+
+    await request(app)
+      .delete('/api/admin/password')
+      .set('x-admin-password', PW)
+      .send({ currentPassword: 'sai-roi' })
+      .expect(400)
+
+    const res = await request(app)
+      .delete('/api/admin/password')
+      .set('x-admin-password', PW)
+      .send({ currentPassword: PW })
+      .expect(200)
+
+    expect(res.body.authRequired).toBe(false)
+    await request(app).get('/api/admin/tree').expect(200)
+  })
+
+  it('ADMIN_PASSWORD trong .env van dung duoc lam duong du phong', async () => {
+    process.env.ADMIN_PASSWORD = 'du-phong'
+    const guarded = createApp(openDb(':memory:'), { serveClient: false })
+
+    await request(guarded).get('/api/admin/tree').expect(401)
+    await request(guarded).get('/api/admin/tree').set('x-admin-password', 'du-phong').expect(200)
+  })
+
+  it('mat khau dat trong trang quan tri de len .env', async () => {
+    process.env.ADMIN_PASSWORD = 'du-phong'
+    const guarded = createApp(openDb(':memory:'), { serveClient: false })
+
+    await request(guarded)
+      .put('/api/admin/password')
+      .set('x-admin-password', 'du-phong')
+      .send({ currentPassword: 'du-phong', newPassword: 'mat-khau-that' })
+      .expect(200)
+
+    await request(guarded).get('/api/admin/tree').set('x-admin-password', 'mat-khau-that').expect(200)
+    await request(guarded).get('/api/admin/tree').set('x-admin-password', 'du-phong').expect(401)
+  })
+
+  it('ham bam: dung khop, sai khong khop, moi lan bam ra chuoi khac nhau', () => {
+    const a = hashPassword(PW)
+    const b = hashPassword(PW)
+
+    expect(a).not.toBe(b) // moi lan mot muoi khac nhau
+    expect(verifyPassword(PW, a)).toBe(true)
+    expect(verifyPassword(PW + 'x', a)).toBe(false)
+    expect(verifyPassword('', a)).toBe(false)
+    expect(verifyPassword(PW, 'rac-khong-phai-hash')).toBe(false)
+  })
+})
+
+describe('kieu hien thi cua trang', () => {
+  const APP_HTML = '<html><head><style>html,body{margin:0;height:100%}#app{height:100vh}</style></head><body><div id="app">x</div></body></html>'
+  const DOC_HTML = '<html><head><style>p{margin:0}</style></head><body><h1>Quy trinh</h1><p>abc</p></body></html>'
+
+  async function upload(id, html) {
+    return request(app)
+      .post(`/api/admin/nodes/${id}/content`)
+      .attach('file', Buffer.from(html), 'a.html')
+      .expect(200)
+  }
+
+  it('mac dinh la kieu tai lieu', async () => {
+    const item = await addItem('Trang')
+    expect(item.displayMode).toBe('document')
+  })
+
+  it('tai len trang tu lo bo cuc thi tu doan ra kieu toan khung', async () => {
+    const item = await addItem('Cong cu')
+    const res = await upload(item.id, APP_HTML)
+    expect(res.body.node.displayMode).toBe('app')
+  })
+
+  it('tai len tai lieu thuong thi van la kieu tai lieu', async () => {
+    const item = await addItem('Quy trinh')
+    const res = await upload(item.id, DOC_HTML)
+    expect(res.body.node.displayMode).toBe('document')
+  })
+
+  it('doan tu dong khong ghi de lua chon cua admin', async () => {
+    const item = await addItem('Cong cu')
+    await upload(item.id, APP_HTML)
+
+    // Admin chu y chon lai kieu tai lieu.
+    await request(app)
+      .patch(`/api/admin/nodes/${item.id}`)
+      .send({ displayMode: 'document' })
+      .expect(200)
+
+    // Tai len lai chinh file do -- lua chon cua admin phai duoc giu.
+    const res = await upload(item.id, APP_HTML)
+    expect(res.body.node.displayMode).toBe('document')
+  })
+
+  it('tu choi kieu hien thi la', async () => {
+    const item = await addItem('Trang')
+    const res = await request(app)
+      .patch(`/api/admin/nodes/${item.id}`)
+      .send({ displayMode: 'fullscreen' })
+      .expect(400)
+    expect(res.body.error).toMatch(/document/)
+  })
+
+  it('kieu toan khung thi khong chen gi vao file', async () => {
+    const item = await addItem('Cong cu')
+    await upload(item.id, APP_HTML)
+
+    const page = await request(app).get(`/content/${item.slug}`).expect(200)
+    expect(page.text).toBe(APP_HTML)
+    expect(page.text).not.toContain('__portal_reset')
+    expect(page.text).not.toContain('__portal_bridge')
+  })
+
+  it('kieu tai lieu van duoc chen style va cau noi chieu cao', async () => {
+    const item = await addItem('Quy trinh')
+    await upload(item.id, DOC_HTML)
+
+    const page = await request(app).get(`/content/${item.slug}`).expect(200)
+    expect(page.text).toContain('__portal_reset')
+    expect(page.text).toContain('__portal_bridge')
+  })
+
+  it('injectIntoHtml tra nguyen ven khi o kieu toan khung', () => {
+    expect(injectIntoHtml(DOC_HTML, 'app')).toBe(DOC_HTML)
+    expect(injectIntoHtml(DOC_HTML, 'document')).toContain('__portal_reset')
+  })
+
+  it('nhan dien: 100vh va html/body height 100% la app, con lai la tai lieu', () => {
+    expect(looksLikeApp('<style>.x{height:100vh}</style>')).toBe(true)
+    expect(looksLikeApp('<style>html,body{height:100%}</style>')).toBe(true)
+    expect(looksLikeApp('<style>body { margin:0; height: 100% }</style>')).toBe(true)
+
+    expect(looksLikeApp(DOC_HTML)).toBe(false)
+    // Header dinh khong lam trang phu thuoc khung nhin.
+    expect(looksLikeApp('<style>.bar{position:fixed;top:0}</style>')).toBe(false)
+    // Khong duoc khop nham vao mot class co chua chu 'body'.
+    expect(looksLikeApp('<style>.somebody{height:100%}</style>')).toBe(false)
   })
 })

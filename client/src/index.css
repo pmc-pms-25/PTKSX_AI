@@ -1,6 +1,111 @@
 @import 'tailwindcss';
+@import './fonts.css';
 
-/* Tailwind v4 lay `dark:` theo prefers-color-scheme, dung nhu thiet ke. */
+/*
+  He mau trung tinh + mot mau nham duy nhat (tim-cham). Do tinh xao nam o
+  lop be mat va sac do vien, khong o mau sac.
+
+    canvas   nen ngoai cung
+    surface  thanh cong cu, cot muc luc, the
+    elevated hop noi len tren (bang lenh, toast)
+    hover    nen khi ro chuot
+*/
+:root {
+  color-scheme: light;
+
+  --ui-canvas: #fbfbfc;
+  --ui-surface: #ffffff;
+  --ui-elevated: #ffffff;
+  --ui-hover: #f4f4f6;
+
+  --ui-border: #e7e7ec;
+  --ui-border-soft: #f0f0f4;
+
+  --ui-text: #15151a;
+  --ui-text-2: #63636e;
+  --ui-text-3: #96969f;
+
+  --ui-accent: #4f46e5;
+  --ui-accent-hover: #4338ca;
+  --ui-accent-wash: #eef0ff;
+  --ui-accent-border: #c7cbff;
+  --ui-on-accent: #ffffff;
+
+  --ui-ok: #0f9960;
+  --ui-warn: #b45309;
+  --ui-danger: #dc2626;
+
+  --ui-shadow-sm: 0 1px 2px rgb(16 16 24 / 0.05);
+  --ui-shadow-md: 0 4px 12px -2px rgb(16 16 24 / 0.08), 0 2px 4px -2px rgb(16 16 24 / 0.04);
+  --ui-shadow-lg: 0 16px 40px -12px rgb(16 16 24 / 0.18), 0 4px 12px -4px rgb(16 16 24 / 0.08);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ui-canvas: #0a0a0d;
+  --ui-surface: #111116;
+  --ui-elevated: #17171e;
+  --ui-hover: #1c1c24;
+
+  --ui-border: #25252e;
+  --ui-border-soft: #1d1d25;
+
+  --ui-text: #ededf1;
+  --ui-text-2: #a1a1ae;
+  --ui-text-3: #6c6c7a;
+
+  --ui-accent: #7c7cf7;
+  --ui-accent-hover: #9494ff;
+  --ui-accent-wash: #1b1b33;
+  --ui-accent-border: #33335c;
+  --ui-on-accent: #0a0a0d;
+
+  --ui-ok: #3ddc97;
+  --ui-warn: #fbbf24;
+  --ui-danger: #f87171;
+
+  --ui-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --ui-shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --ui-shadow-lg: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 4px 12px -4px rgb(0 0 0 / 0.4);
+}
+
+/* `inline` de utility nhung thang gia tri var() vao -- nho vay doi theme la doi ngay. */
+@theme inline {
+  --color-canvas: var(--ui-canvas);
+  --color-surface: var(--ui-surface);
+  --color-elevated: var(--ui-elevated);
+  --color-hover: var(--ui-hover);
+
+  --color-line: var(--ui-border);
+  --color-line-soft: var(--ui-border-soft);
+
+  --color-fg: var(--ui-text);
+  --color-fg-2: var(--ui-text-2);
+  --color-fg-3: var(--ui-text-3);
+
+  --color-accent: var(--ui-accent);
+  --color-accent-hover: var(--ui-accent-hover);
+  --color-accent-wash: var(--ui-accent-wash);
+  --color-accent-line: var(--ui-accent-border);
+  --color-on-accent: var(--ui-on-accent);
+
+  --color-ok: var(--ui-ok);
+  --color-warn: var(--ui-warn);
+  --color-danger: var(--ui-danger);
+
+  --shadow-sm: var(--ui-shadow-sm);
+  --shadow-md: var(--ui-shadow-md);
+  --shadow-lg: var(--ui-shadow-lg);
+
+  --font-sans: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+/* `dark:` bam theo thuoc tinh tren <html> chu khong theo prefers-color-scheme,
+   vi nguoi dung phai tu chon duoc. Script trong index.html dat thuoc tinh nay
+   truoc khi ve khung hinh dau tien nen khong co cu nhay mau. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 html,
 body,
@@ -10,29 +115,61 @@ body,
 
 body {
   margin: 0;
-  font-family:
-    'Inter', system-ui, 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+  background: var(--ui-canvas);
+  color: var(--ui-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  /* Inter can siet nhe khoang chu o co nho moi ra dung dang. */
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thanh cuon manh hon thanh mac dinh cua Windows, hop voi sidebar hep. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nhan nhom trong cot muc luc va cot muc trong trang. */
+.ui-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Vien focus dung mot kieu duy nhat toan trang -- ban phim luon nhin thay minh o dau. */
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 .thin-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(161 161 170 / 0.45) transparent;
+  scrollbar-color: var(--ui-border) transparent;
 }
 .thin-scroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 .thin-scroll::-webkit-scrollbar-thumb {
-  background: rgb(161 161 170 / 0.45);
+  background: var(--ui-border);
   border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--ui-text-3);
+  background-clip: content-box;
 }
 .thin-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Skeleton luc dang tai noi dung -- de mat hon spinner tren nen trang. */
+/* Khung cho luc dang tai -- de mat hon vong quay tren nen trang. */
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
@@ -47,26 +184,38 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(255 255 255 / 0.55),
-    transparent
-  );
-  animation: shimmer 1.6s infinite;
+  background: linear-gradient(90deg, transparent, var(--ui-hover), transparent);
+  animation: shimmer 1.5s infinite;
 }
-@media (prefers-color-scheme: dark) {
-  .shimmer::after {
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgb(255 255 255 / 0.07),
-      transparent
-    );
+
+/* Thanh bao dang tai, khong biet truoc do dai. */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.35);
+  }
+  50% {
+    transform: translateX(30%) scaleX(0.6);
+  }
+  100% {
+    transform: translateX(100%) scaleX(0.35);
+  }
+}
+.ui-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  background: var(--ui-accent);
+  animation: indeterminate 1.15s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
   }
 }
 
-/* Nguoi dung dat he thong o che do giam chuyen dong thi tat het animation. */
+/* He thong dat che do giam chuyen dong thi tat het animation. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -74,5 +223,6 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

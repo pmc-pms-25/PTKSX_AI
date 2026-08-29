@@ -1,10 +1,36 @@
 import { useEffect, useState } from 'react'
-import { Check, ExternalLink, Folder, FileText } from 'lucide-react'
+import { Check, ExternalLink, Folder, FileText, Maximize2, ScrollText } from 'lucide-react'
 import { ICON_KEYS, iconComponent } from '../lib/icons.js'
 import { api } from '../lib/api.js'
 import ContentUpload from './ContentUpload.jsx'
 
-export default function NodeForm({ node, version = 0, onSave, onUpload, saving, uploading }) {
+const DISPLAY_MODES = [
+  {
+    value: 'document',
+    Icon: ScrollText,
+    label: 'Tài liệu',
+    hint: 'Đóng khung như tờ giấy, tự kéo cao theo nội dung. Portal chèn sẵn kiểu chữ, bảng biểu.',
+  },
+  {
+    value: 'app',
+    Icon: Maximize2,
+    label: 'Toàn khung',
+    hint: 'Chiếm trọn vùng bên phải và tự cuộn bên trong. Portal không chèn gì thêm. Dùng cho trang tự lo bố cục.',
+  },
+]
+
+export default function NodeForm({
+  node,
+  version = 0,
+  groups = [],
+  currentGroupId = null,
+  onSave,
+  onUpload,
+  onMoveToGroup,
+  onChangeDisplayMode,
+  saving,
+  uploading,
+}) {
   const [title, setTitle] = useState(node.title)
   const [slug, setSlug] = useState(node.slug)
   const [icon, setIcon] = useState(node.icon ?? '')
@@ -49,59 +75,80 @@ export default function NodeForm({ node, version = 0, onSave, onUpload, saving, 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
-        <TypeIcon size={15} className={node.type === 'folder' ? 'text-amber-500' : ''} />
+      <div className="flex items-center gap-2 text-[13px] text-fg-3">
+        <TypeIcon size={15} className={node.type === 'folder' ? 'text-warn' : ''} />
         {node.type === 'folder' ? 'Thư mục' : 'Trang'}
         <span
           className={`ml-auto rounded-full px-2 py-0.5 text-[11.5px] ${
             node.isActive
-              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-              : 'bg-zinc-500/10 text-zinc-500'
+              ? 'bg-ok/15 text-ok'
+              : 'bg-hover text-fg-3'
           }`}
         >
           {node.isActive ? 'Đang hiện' : 'Đang ẩn'}
         </span>
       </div>
 
+      {groups.length > 1 && (
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-fg-2">Nhóm</label>
+          <select
+            value={currentGroupId ?? ''}
+            onChange={(e) => onMoveToGroup(Number(e.target.value))}
+            className="w-full rounded-[7px] border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
+          >
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.title}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[12px] text-fg-3">
+            Chuyển sang nhóm khác sẽ đưa mục này (và mọi mục bên trong) ra ngoài cùng của
+            nhóm đó.
+          </p>
+        </div>
+      )}
+
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
+          <label className="mb-1.5 block text-[13px] font-medium text-fg-2">
             Tên hiển thị
           </label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            className="w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent-line"
           />
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
+          <label className="mb-1.5 block text-[13px] font-medium text-fg-2">
             Đường dẫn
           </label>
           <input
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 font-mono text-[13px] text-zinc-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            className="w-full rounded-md border border-line bg-canvas px-3 py-2 font-mono text-[13px] text-fg outline-none transition focus:border-accent-line"
           />
-          <p className="mt-1.5 text-[12px] text-zinc-400">
+          <p className="mt-1.5 text-[12px] text-fg-3">
             Đổi tên hiển thị không tự đổi đường dẫn — sửa ở đây sẽ làm hỏng các liên kết đã
             chia sẻ trước đó.
           </p>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
+          <label className="mb-1.5 block text-[13px] font-medium text-fg-2">
             Biểu tượng
           </label>
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
               onClick={() => setIcon('')}
-              className={`grid size-8 place-items-center rounded-lg text-[11px] transition ${
+              className={`grid size-8 place-items-center rounded-md text-[11px] transition ${
                 icon === ''
-                  ? 'bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/30 dark:text-blue-400'
-                  : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  ? 'bg-accent-wash text-accent ring-1 ring-accent-line/45'
+                  : 'text-fg-3 hover:bg-hover/60 hover:text-fg'
               }`}
               title="Mặc định theo loại mục"
             >
@@ -115,10 +162,10 @@ export default function NodeForm({ node, version = 0, onSave, onUpload, saving, 
                   type="button"
                   onClick={() => setIcon(key)}
                   title={key}
-                  className={`grid size-8 place-items-center rounded-lg transition ${
+                  className={`grid size-8 place-items-center rounded-md transition ${
                     icon === key
-                      ? 'bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/30 dark:text-blue-400'
-                      : 'text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                      ? 'bg-accent-wash text-accent ring-1 ring-accent-line/45'
+                      : 'text-fg-3 hover:bg-hover/60 hover:text-fg'
                   }`}
                 >
                   <Icon size={15} />
@@ -131,7 +178,7 @@ export default function NodeForm({ node, version = 0, onSave, onUpload, saving, 
         <button
           type="submit"
           disabled={!dirty || saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-accent-hover disabled:opacity-40"
         >
           <Check size={15} />
           {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
@@ -140,25 +187,56 @@ export default function NodeForm({ node, version = 0, onSave, onUpload, saving, 
 
       {node.type === 'item' && (
         <>
-          <hr className="border-zinc-200 dark:border-zinc-800" />
+          <hr className="border-line" />
           <ContentUpload node={node} onUpload={onUpload} busy={uploading} />
 
+          <div>
+            <span className="mb-2 block text-[13px] font-medium text-fg-2">Kiểu hiển thị</span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {DISPLAY_MODES.map(({ value, Icon, label, hint }) => {
+                const active = (node.displayMode ?? 'document') === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => !active && onChangeDisplayMode(value)}
+                    className={`rounded-[9px] border px-3.5 py-3 text-left transition ${
+                      active
+                        ? 'border-accent bg-accent-wash'
+                        : 'border-line hover:border-fg-3 hover:bg-hover'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon size={14} className={active ? 'text-accent' : 'text-fg-3'} />
+                      <span
+                        className={`text-[13px] font-medium ${active ? 'text-accent' : 'text-fg'}`}
+                      >
+                        {label}
+                      </span>
+                    </span>
+                    <span className="mt-1 block text-[12px] leading-relaxed text-fg-3">{hint}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {node.hasContent && (
-            <div className="overflow-hidden rounded-xl ring-1 ring-zinc-900/5 dark:ring-white/10">
-              <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-700 dark:bg-zinc-800">
-                <span className="text-[12px] text-zinc-500 dark:text-zinc-400">Xem trước</span>
+            <div className="overflow-hidden rounded-md border border-line">
+              <div className="flex items-center justify-between border-b border-line bg-canvas px-3 py-1.5">
+                <span className="text-[12px] text-fg-3">Xem trước</span>
                 {node.isActive ? (
                   <a
                     href={`/content/${encodeURIComponent(node.slug)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[12px] text-zinc-500 transition hover:text-zinc-800 dark:hover:text-zinc-200"
+                    className="inline-flex items-center gap-1 text-[12px] text-fg-3 transition hover:text-fg"
                   >
                     <ExternalLink size={12} />
                     Tab mới
                   </a>
                 ) : (
-                  <span className="text-[12px] text-zinc-400">Đang ẩn khỏi portal</span>
+                  <span className="text-[12px] text-fg-3">Đang ẩn khỏi portal</span>
                 )}
               </div>
               <iframe

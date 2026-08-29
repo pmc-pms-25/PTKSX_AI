@@ -73,6 +73,17 @@ export const api = {
   reorder: (order) =>
     request('/api/admin/tree/order', { method: 'PUT', body: { order } }),
 
+  createGroup: (title) =>
+    request('/api/admin/groups', { method: 'POST', body: { title } }),
+
+  renameGroup: (id, title) =>
+    request(`/api/admin/groups/${id}`, { method: 'PATCH', body: { title } }),
+
+  deleteGroup: (id) => request(`/api/admin/groups/${id}`, { method: 'DELETE' }),
+
+  reorderGroups: (order) =>
+    request('/api/admin/groups/order', { method: 'PUT', body: { order } }),
+
   // Noi dung tho cho khung xem truoc -- di duong nay de xem duoc ca muc dang tat.
   rawContent: (id) => request(`/api/admin/nodes/${id}/content`),
 
@@ -81,4 +92,26 @@ export const api = {
     form.append('file', file)
     return request(`/api/admin/nodes/${id}/content`, { method: 'POST', form })
   },
+
+  settings: () => request('/api/settings'),
+
+  updateSettings: (patch) =>
+    request('/api/admin/settings', { method: 'PUT', body: patch }),
+
+  uploadLogo: (file) => {
+    const form = new FormData()
+    form.append('logo', file)
+    return request('/api/admin/settings/logo', { method: 'POST', form })
+  },
+
+  removeLogo: () => request('/api/admin/settings/logo', { method: 'DELETE' }),
+
+  changePassword: (currentPassword, newPassword) =>
+    request('/api/admin/password', {
+      method: 'PUT',
+      body: { currentPassword, newPassword },
+    }),
+
+  removePassword: (currentPassword) =>
+    request('/api/admin/password', { method: 'DELETE', body: { currentPassword } }),
 }

@@ -1,9 +1,35 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PKTSX Portal</title>
+    <meta name="description" content="Cổng tài liệu nội bộ: quy trình, hướng dẫn vận hành và bảo trì." />
+    <meta name="theme-color" content="#fbfbfc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0d" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Cổng tài liệu</title>
+
+    <!--
+      Dat theme TRUOC khi trang ve khung hinh dau tien. Neu de React lam viec nay
+      thi nguoi chon nen toi se thay mot cai nhay trang o moi lan tai trang.
+      Doan nay phai la script dong bo, dat trong <head>, khong duoc defer.
+    -->
+    <script>
+      (function () {
+        var el = document.documentElement
+        try {
+          var saved = localStorage.getItem('pktsx-theme')
+          var dark =
+            saved === 'dark' ||
+            (saved !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          el.setAttribute('data-theme', dark ? 'dark' : 'light')
+        } catch (e) {
+          // Trinh duyet chan localStorage (che do rieng tu) -- cu de nen sang.
+          el.setAttribute('data-theme', 'light')
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

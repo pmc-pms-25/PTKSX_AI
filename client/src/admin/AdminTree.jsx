@@ -62,17 +62,17 @@ function Row({
     >
       <div
         onClick={() => onSelect(item.id)}
-        className={`group flex items-center gap-1 rounded-lg py-1.5 pl-1 pr-1.5 text-[13.5px] transition-colors ${
+        className={`group flex items-center gap-1 rounded-md py-1.5 pl-1 pr-1.5 text-[13.5px] transition-colors ${
           isSelected
-            ? 'bg-blue-500/10 text-blue-700 ring-1 ring-inset ring-blue-500/25 dark:text-blue-300'
-            : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/70'
+            ? 'bg-accent-wash text-fg ring-1 ring-inset ring-accent-line/45'
+            : 'text-fg-2 hover:bg-hover/60 hover:text-fg'
         }`}
       >
         <button
           {...dragHandle}
           onClick={(e) => e.stopPropagation()}
           aria-label="Kéo để sắp xếp"
-          className="shrink-0 cursor-grab touch-none rounded p-0.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600"
+          className="shrink-0 cursor-grab touch-none rounded p-0.5 text-fg-3/60 opacity-0 transition group-hover:opacity-100 hover:text-fg active:cursor-grabbing"
         >
           <GripVertical size={14} />
         </button>
@@ -84,7 +84,7 @@ function Row({
               onToggleCollapse(item.id)
             }}
             aria-label={isCollapsed ? 'Mở thư mục' : 'Thu gọn thư mục'}
-            className="shrink-0 rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"
+            className="shrink-0 rounded p-0.5 text-fg-3 transition hover:text-fg"
             style={{ transform: isCollapsed ? 'none' : 'rotate(90deg)' }}
           >
             <ChevronRight size={14} />
@@ -95,12 +95,12 @@ function Row({
 
         <Icon
           size={15}
-          className={`shrink-0 ${item.type === 'folder' ? 'text-amber-500/90' : 'text-zinc-400'}`}
+          className={`shrink-0 ${item.type === 'folder' ? 'text-accent' : 'text-fg-3'}`}
         />
 
         <span
           className={`min-w-0 flex-1 truncate ${
-            item.isActive ? '' : 'text-zinc-400 line-through decoration-dashed dark:text-zinc-500'
+            item.isActive ? '' : 'text-fg-3 line-through decoration-dashed'
           }`}
         >
           {item.title}
@@ -109,7 +109,7 @@ function Row({
         {item.type === 'item' && !item.hasContent && (
           <span
             title="Chưa có nội dung"
-            className="shrink-0 text-amber-500"
+            className="shrink-0 text-warn"
           >
             <CircleDot size={12} />
           </span>
@@ -122,7 +122,7 @@ function Row({
           }}
           aria-label={item.isActive ? 'Tắt mục này' : 'Bật mục này'}
           title={item.isActive ? 'Đang hiện — bấm để ẩn' : 'Đang ẩn — bấm để hiện'}
-          className="shrink-0 rounded p-1 text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-200/70 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+          className="shrink-0 rounded p-1 text-fg-3 opacity-0 transition group-hover:opacity-100 hover:bg-hover hover:text-fg"
         >
           {item.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
         </button>
@@ -133,7 +133,7 @@ function Row({
             onDelete(item)
           }}
           aria-label="Xóa mục này"
-          className="shrink-0 rounded p-1 text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+          className="shrink-0 rounded p-1 text-fg-3 opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger"
         >
           <Trash2 size={14} />
         </button>
@@ -160,6 +160,7 @@ function SortableRow(props) {
 
 export default function AdminTree({
   tree,
+  groupId,
   selectedId,
   onSelect,
   onReorder,
@@ -225,7 +226,7 @@ export default function AdminTree({
         reset()
         if (!over || !proj) return
         const moved = applyMove(items, active.id, over.id, proj)
-        onReorder(toOrderPayload(moved))
+        onReorder(toOrderPayload(moved, groupId))
       }}
     >
       <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
@@ -249,7 +250,7 @@ export default function AdminTree({
 
       <DragOverlay dropAnimation={null}>
         {activeItem && (
-          <div className="rounded-lg bg-white shadow-lg ring-1 ring-zinc-900/10 dark:bg-zinc-800 dark:ring-white/10">
+          <div className="rounded-lg border border-accent-line bg-elevated shadow-lg">
             <Row
               item={{ ...activeItem, depth: 0 }}
               depthOverride={0}

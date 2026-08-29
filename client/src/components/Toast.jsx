@@ -9,21 +9,9 @@ export function useToast() {
 }
 
 const STYLES = {
-  success: {
-    Icon: CheckCircle2,
-    ring: 'ring-emerald-500/25',
-    tint: 'text-emerald-600 dark:text-emerald-400',
-  },
-  error: {
-    Icon: XCircle,
-    ring: 'ring-rose-500/25',
-    tint: 'text-rose-600 dark:text-rose-400',
-  },
-  info: {
-    Icon: Info,
-    ring: 'ring-sky-500/25',
-    tint: 'text-sky-600 dark:text-sky-400',
-  },
+  success: { Icon: CheckCircle2, tint: 'text-ok' },
+  error: { Icon: XCircle, tint: 'text-danger' },
+  info: { Icon: Info, tint: 'text-accent' },
 }
 
 export function ToastProvider({ children }) {
@@ -54,10 +42,10 @@ export function ToastProvider({ children }) {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 40, scale: 0.96 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                className={`pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-xl bg-white px-4 py-3 text-sm shadow-lg ring-1 ${style.ring} dark:bg-zinc-800`}
+                className="pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-md border border-line bg-elevated px-4 py-3 text-[13.5px] shadow-lg"
               >
-                <Icon size={17} className={`mt-0.5 shrink-0 ${style.tint}`} />
-                <span className="text-zinc-700 dark:text-zinc-200">{toast.message}</span>
+                <Icon size={16} className={`mt-0.5 shrink-0 ${style.tint}`} />
+                <span className="text-fg-2">{toast.message}</span>
               </motion.div>
             )
           })}

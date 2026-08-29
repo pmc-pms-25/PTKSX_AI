@@ -1,103 +1,173 @@
-import { useMemo } from 'react'
-import { Search, X, Settings2, Layers } from 'lucide-react'
-import { filterTree } from './lib/treeUtils.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Clock } from 'lucide-react'
+import { flattenVisible } from './lib/treeUtils.js'
+import { iconComponent } from './lib/icons.js'
 import TreeNode from './TreeNode.jsx'
 
+function Eyebrow({ children, className = '' }) {
+  return <div className={`ui-eyebrow px-2 text-fg-3 ${className}`}>{children}</div>
+}
+
 export default function Sidebar({
-  tree,
+  groups,
   status,
   selectedSlug,
   expanded,
+  recent,
   onToggleFolder,
   onSelect,
-  query,
-  onQueryChange,
 }) {
-  const { tree: visible, matchedFolderIds } = useMemo(
-    () => filterTree(tree, query),
-    [tree, query],
+  const navRef = useRef(null)
+  const [focusedId, setFocusedId] = useState(null)
+
+  // Dieu huong bang phim di xuyen qua tat ca cac nhom nhu mot danh sach duy nhat,
+  // dung nhu mat nguoi doc nhin thay cot muc luc.
+  const rows = useMemo(
+    () => groups.flatMap((group) => flattenVisible(group.tree, expanded)),
+    [groups, expanded],
   )
 
-  // Khi dang tim kiem, thu muc chua ket qua phai bung san du nguoi dung chua bam vao.
-  const effectiveExpanded = useMemo(() => {
-    if (!query.trim()) return expanded
-    return new Set([...expanded, ...matchedFolderIds])
-  }, [expanded, matchedFolderIds, query])
+  // Cot muc luc chi duoc co dung mot diem dung Tab. Neu muc dang giu focus bien mat
+  // thi tra diem dung ve dong dau tien.
+  useEffect(() => {
+    if (rows.length === 0) return
+    if (!rows.some((r) => r.node.id === focusedId)) {
+      setFocusedId(rows[0].node.id)
+    }
+  }, [rows, focusedId])
+
+  const focusNode = (id) => {
+    setFocusedId(id)
+    navRef.current?.querySelector('[data-node-id="' + id + '"]')?.focus()
+  }
+
+  const onKeyDown = (event) => {
+    const index = rows.findIndex((r) => r.node.id === focusedId)
+    if (index === -1) return
+    const { node, depth } = rows[index]
+    const isFolder = node.type === 'folder'
+    const isOpen = expanded.has(node.id)
+
+    const move = (to) => {
+      event.preventDefault()
+      if (rows[to]) focusNode(rows[to].node.id)
+    }
+
+    switch (event.key) {
+      case 'ArrowDown':
+        return move(index + 1)
+      case 'ArrowUp':
+        return move(index - 1)
+      case 'Home':
+        return move(0)
+      case 'End':
+        return move(rows.length - 1)
+      case 'ArrowRight':
+        if (!isFolder) return
+        event.preventDefault()
+        if (!isOpen) onToggleFolder(node.id)
+        else if (rows[index + 1]) focusNode(rows[index + 1].node.id)
+        return
+      case 'ArrowLeft': {
+        event.preventDefault()
+        if (isFolder && isOpen) return onToggleFolder(node.id)
+        // Da dong roi (hoac day la mot trang) thi nhay nguoc len thu muc cha.
+        for (let i = index - 1; i >= 0; i -= 1) {
+          if (rows[i].depth < depth) return focusNode(rows[i].node.id)
+        }
+        return
+      }
+      default:
+    }
+  }
+
+  const visibleGroups = useMemo(
+    () => groups.filter((group) => group.tree.length > 0),
+    [groups],
+  )
 
   return (
-    <nav className="flex h-full flex-col border-r border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-zinc-200/80 px-4 dark:border-zinc-800">
-        <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
-          <Layers size={15} />
-        </div>
-        <span className="text-[15px] font-semibold tracking-tight text-zinc-800 dark:text-zinc-100">
-          PKTSX Portal
-        </span>
-      </div>
-
-      <div className="shrink-0 px-3 pb-1 pt-3">
-        <div className="relative">
-          <Search
-            size={15}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400"
-          />
-          <input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Tìm mục..."
-            className="w-full rounded-lg border border-zinc-200 bg-zinc-50 py-1.5 pl-8 pr-8 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:bg-zinc-800"
-          />
-          {query && (
-            <button
-              onClick={() => onQueryChange('')}
-              aria-label="Xóa tìm kiếm"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto thin-scroll px-2 pb-3 pt-1">
-        {status === 'loading' && (
-          <div className="space-y-1.5 px-1 pt-1">
-            {[...Array(6)].map((_, i) => (
+    <nav
+      ref={navRef}
+      onKeyDown={onKeyDown}
+      className="thin-scroll h-full overflow-y-auto border-r border-line bg-surface px-2.5 pb-8 pt-3.5"
+    >
+      {status === 'loading' && (
+        <>
+          <Eyebrow className="mb-1.5">Tài liệu</Eyebrow>
+          <div className="space-y-1.5 px-2 pt-1">
+            {[...Array(7)].map((_, i) => (
               <div
                 key={i}
-                className="shimmer h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800"
-                style={{ width: `${88 - i * 6}%` }}
+                className="shimmer h-7 rounded-md bg-hover"
+                style={{ width: 92 - i * 7 + '%' }}
               />
             ))}
           </div>
-        )}
+        </>
+      )}
 
-        {status === 'ready' && visible.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-zinc-400">
-            {query.trim() ? 'Không có mục nào khớp.' : 'Chưa có mục nào.'}
-          </p>
-        )}
+      {/* Nhom rong la bo khung admin dung do, nguoi doc khong can thay. */}
+      {status === 'ready' &&
+        visibleGroups.map((group, index) => (
+          <section key={group.id} className={index > 0 ? 'mt-6' : ''}>
+            <Eyebrow className="mb-1.5">{group.title}</Eyebrow>
 
-        {visible.map((node) => (
-          <TreeNode
-            key={node.id}
-            node={node}
-            depth={0}
-            selectedSlug={selectedSlug}
-            expanded={effectiveExpanded}
-            onToggleFolder={onToggleFolder}
-            onSelect={onSelect}
-          />
+            <motion.ul
+              role="tree"
+              aria-label={group.title}
+              initial="hidden"
+              animate="shown"
+              variants={{ shown: { transition: { staggerChildren: 0.03 } } }}
+              className="flex flex-col gap-px"
+            >
+              {group.tree.map((node) => (
+                <motion.div
+                  key={node.id}
+                  variants={{
+                    hidden: { opacity: 0, x: -6 },
+                    shown: { opacity: 1, x: 0, transition: { duration: 0.22 } },
+                  }}
+                >
+                  <TreeNode
+                    node={node}
+                    selectedSlug={selectedSlug}
+                    expanded={expanded}
+                    focusedId={focusedId}
+                    query=""
+                    onToggleFolder={onToggleFolder}
+                    onSelect={onSelect}
+                    onFocusNode={setFocusedId}
+                  />
+                </motion.div>
+              ))}
+            </motion.ul>
+          </section>
         ))}
-      </div>
 
-      <a
-        href="#/admin"
-        className="flex shrink-0 items-center gap-2 border-t border-zinc-200/80 px-4 py-3 text-[13px] text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-800 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
-      >
-        <Settings2 size={15} />
-        Quản trị nội dung
-      </a>
+      {recent.length > 0 && (
+        <section className="mt-6">
+          <Eyebrow className="mb-1.5">Mở gần đây</Eyebrow>
+          <ul className="flex flex-col gap-px">
+            {recent.map((node) => {
+              const Icon = iconComponent(node.icon) ?? Clock
+              return (
+                <li key={node.id}>
+                  <button
+                    onClick={() => onSelect(node)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13.5px] text-fg-2 transition-colors hover:bg-hover hover:text-fg"
+                  >
+                    <Icon size={15} strokeWidth={1.8} className="shrink-0 text-fg-3" />
+                    <span className="min-w-0 truncate">{node.title}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
     </nav>
   )
 }
